@@ -6,9 +6,7 @@
 ;; Author: felko <http://github/felko>
 ;; Homepage: https://github.com/felko/neuron-mode
 ;; Keywords: outlines
-;; Package-Commit: d769042ca0b715c8da7947421302b52222598e95
-;; Package-Version: 20201013.1229
-;; Package-X-Original-Version: 0.1
+;; Package-Version: 0.1
 ;; Package-Requires: ((emacs "26.3") (f "0.20.0") (s "1.12.0") (markdown-mode "2.3") (company "0.9.13"))
 ;;
 ;; This file is not part of GNU Emacs.
@@ -152,6 +150,13 @@ The trail stores a list of zettel IDs which tracks
 the previously visited zettels."
   :group 'neuron
   :type 'integerp)
+
+(defcustom neuron-title-in-buffer-name 't
+  "Whether to include zettel titles in buffer names.
+
+If non-nil, the zettel title will be included in the buffer name."
+  :group 'neuron
+  :type 'booleanp)
 
 (defgroup neuron-faces nil
   "Faces used in neuron-mode."
@@ -347,7 +352,11 @@ Extract only the result itself, so the query type is lost."
                  (progn
                    (neuron--rebuild-cache)
                    (dolist (buffer (neuron-list-buffers))
-                     (with-current-buffer buffer (neuron--setup-overlays)))
+                     (with-current-buffer
+                         buffer
+                       (neuron--setup-overlays)
+                       (neuron--name-buffer))
+                     (with-current-buffer buffer (neuron--name-buffer)))
                    (message "Regenerated zettel cache")))
                "neuron-refresh"))
 
@@ -397,6 +406,23 @@ If NO-DEFAULT-TAGS is non-nil, don't add the tags specified the variable
       (neuron--rebuild-cache)
       (message "Created %s" (f-filename path))
       buffer)))
+
+(defun neuron--name-buffer ()
+  "Name the zettel BUFFER according to `neuron-title-in-buffer-name'"
+  (let* ((zettel-id (neuron--get-zettel-id (current-buffer)))
+         (zettel-title (neuron--get-zettel-title zettel-id))
+         (short-buffer-filename (f-filename (buffer-file-name (current-buffer))))
+         (new-buffer-name (if neuron-title-in-buffer-name
+                              (if zettel-title
+                                  (concat short-buffer-filename " (" zettel-title ")")
+                                short-buffer-filename)
+                            short-buffer-filename)))
+    (rename-buffer new-buffer-name)))
+
+(defun neuron--get-zettel-title (id)
+  "Get the title of the zettel with an id of ID.
+Returns nil if no such zettle is found."
+  (alist-get 'zettelTitle (neuron--get-cached-zettel-from-id id) nil))
 
 ;;;###autoload
 (defun neuron-new-zettel (&optional title id)
@@ -765,7 +791,7 @@ the cache when the ID is not found."
 (defun neuron--get-zettel-id (&optional buffer)
   "Extract the zettel ID of BUFFER."
   (interactive "b")
-  (f-base (buffer-name buffer)))
+  (f-base (buffer-file-name buffer)))
 
 (defun neuron--open-page (rel-path)
   "Open the REL-PATH in the browser.
@@ -1206,7 +1232,8 @@ IGNORED is the rest of the arguments, not sure why it's there."
     (add-hook 'after-save-hook #'neuron-rib-generate t t))
   (add-hook 'after-save-hook #'neuron--setup-overlays t t)
   (neuron--setup-overlays)
-  (use-local-map neuron-mode-map))
+  (use-local-map neuron-mode-map)
+  (neuron--name-buffer))
 
 (defun neuron--auto-enable-when-in-zettelkasten ()
   "Automatically switch to neuron-mode when located in a zettelkasten."
